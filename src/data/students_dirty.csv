@@ -1,0 +1,12 @@
+Name,Age,Score,Attendance,Gender,Height_cm
+Alice,20,85,90,F,160
+Bob,22, ,80,M,175
+Charlie,21,70,?,M,180
+Alice,20,85,90,F,160
+Diana,,95,100,F,?
+Ethan,19,55,60,M,178
+Fiona,23,100,100,F,182
+George,21,65,80,M,200
+Hannah,20,75,90,,158
+Ivan,25,45,50,M,165
+Julia,19,90,95,F,170
