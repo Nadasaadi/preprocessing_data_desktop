@@ -3,7 +3,7 @@ from tkinter import ttk, filedialog, messagebox
 import pandas as pd
 import os
 
-from preprocessing import handle_missing_data, normalize_data, standardize_data
+from preprocessing import handle_missing_data, normalize_data, standardize_data , variance_threshold_filter
 from fuse import fuse_datasets
 from visualize import visualize_interactive
 from smart_preprocessing import analyze_dataset
@@ -41,6 +41,9 @@ def launch_main_window():
     pre_menu.add_command(label="Gestion des valeurs manquantes", command=lambda: apply_preprocessing(tree, "missing"))
     pre_menu.add_command(label="Standardisation", command=lambda: apply_preprocessing(tree, "standardize"))
     pre_menu.add_command(label="Normalisation", command=lambda: apply_preprocessing(tree, "normalize"))
+    pre_menu.add_command(label="Filtrage par variance", command=lambda: apply_preprocessing(tree, "variance"))
+
+
     pre_menu.add_separator()
     pre_menu.add_command(label="Analyse intelligente (auto)", command=lambda: open_smart_analysis(tree))
     pre_menu.add_command(label="Profiling avancé (YData)", command=lambda: open_auto_profiling(tree))  # <-- ajouté ici
@@ -182,11 +185,22 @@ def apply_preprocessing(tree, action):
     df = pd.read_csv(path)
 
     if action == "missing":
-        df_new = handle_missing_data(df)
+        df_new, changed = handle_missing_data(df)
+        if not changed:
+            messagebox.showinfo(
+                "Information",
+                "Le dataset ne contient aucune valeur manquante. Aucun prétraitement nécessaire."
+            )
+            return
     elif action == "normalize":
         df_new = normalize_data(df)
     elif action == "standardize":
         df_new = standardize_data(df)
+    elif action == "variance":
+        df_new = variance_threshold_filter(df, threshold=0.01)
+        messagebox.showinfo("Filtrage par variance", "Les colonnes à faible variance ont été supprimées.")
+        
+    
     else:
         messagebox.showerror("Erreur", "Action inconnue.")
         return
@@ -262,19 +276,57 @@ def open_smart_analysis(tree):
 
 def apply_suggestions(df, suggestions, filename, win):
     from preprocessing import handle_missing_data, normalize_data, standardize_data
+    from sklearn.preprocessing import LabelEncoder, OneHotEncoder
 
     df_new = df.copy()
+
     for s in suggestions:
-        if "manquantes" in s["type"].lower():
-            df_new = handle_missing_data(df_new)
-        elif "standardisation" in s["type"].lower():
+        t = s["type"].lower()
+
+        if "manquantes" in t:
+            df_new, changed = handle_missing_data(df_new)
+            if not changed:
+                messagebox.showinfo(
+                    "Information",
+                    "Le dataset ne contient aucune valeur manquante. Aucun prétraitement nécessaire."
+                )
+                continue  # passe au traitement suivant
+
+            
+
+        elif "standardisation" in t:
             df_new = standardize_data(df_new)
-        elif "normalisation" in s["type"].lower():
+
+        elif "normalisation" in t and "aucune" not in s["action"].lower():
             df_new = normalize_data(df_new)
+
+        elif "encodage" in t:
+            # --- Encodage automatique des variables catégorielles ---
+            cat_cols = df_new.select_dtypes(include=["object", "category"]).columns
+            if len(cat_cols) == 0:
+                continue
+
+            # Choix du mode d’encodage selon le nombre de catégories
+            for col in cat_cols:
+                n_unique = df_new[col].nunique()
+                if n_unique <= 10:
+                    # Encodage One-Hot
+                    onehot = pd.get_dummies(df_new[col], prefix=col)
+                    df_new = pd.concat([df_new.drop(columns=[col]), onehot], axis=1)
+                else:
+                    # Label encoding si trop de modalités
+                    le = LabelEncoder()
+                    df_new[col] = le.fit_transform(df_new[col].astype(str))
 
     out_name = f"{os.path.splitext(filename)[0]}_smart.csv"
     df_new.to_csv(os.path.join(DATA_DIR, out_name), index=False)
-    messagebox.showinfo("Succès", f"Prétraitement intelligent appliqué → {out_name}")
+
+    messagebox.showinfo(
+        "Succès",
+        f"Prétraitement intelligent appliqué → {out_name}\n"
+        f"Les encodages catégoriels ont été générés automatiquement."
+    )
+
     win.destroy()
 
 
