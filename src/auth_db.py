@@ -4,7 +4,7 @@ import hashlib
 # --- Configuration de connexion MySQL ---
 DB_CONFIG = {
     "host": "localhost",
-    "user": "root",           # ⚠️ adapte selon ton Workbench
+    "user": "root",          
     "password": "nadasaadi2003*",
     "database": "users_dwh1"
 }

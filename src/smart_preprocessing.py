@@ -13,12 +13,35 @@ def analyze_dataset(df: pd.DataFrame):
     suggestions = []
     summary = {}
 
-    # --- 0️⃣ Filtrage des colonnes identifiants ---
-    id_like = [
-        col for col in df.columns
-        if re.search(r'\b(id|code|num|index|identifiant)\b', col.lower())
-        or df[col].is_unique
-    ]
+
+    def is_probable_id(series):
+        """
+        Retourne True si la colonne ressemble vraiment à un identifiant.
+        """
+        # 1️⃣ Un identifiant doit être unique
+        if not series.is_unique:
+            return False
+        
+        # 2️⃣ Si c'est une chaîne contenant chiffres + lettres → ID probable
+        if series.dtype == object:
+            if series.str.match(r'^[A-Za-z]*\d+[A-Za-z]*$').any():
+                return True
+        
+        # 3️⃣ Si c'est entier et ressemble à une séquence continue (1..N) → ID
+        if np.issubdtype(series.dtype, np.integer):
+            values = series.dropna().sort_values().values
+            if np.all(np.diff(values) == 1):  # séquence parfaite
+                return True
+        
+        # 4️⃣ Si c'est entier mais dispersion forte → probablement une variable utile (ex: âge, prix)
+        if np.issubdtype(series.dtype, np.number):
+            return False  # garde les colonnes continues comme variables
+        
+        return False
+
+    # --- 0️⃣ Filtrage basé sur heuristique intelligente ---
+    id_like = [col for col in df.columns if is_probable_id(df[col])]
+
     df = df.drop(columns=id_like, errors="ignore")
 
     if id_like:
@@ -26,7 +49,7 @@ def analyze_dataset(df: pd.DataFrame):
             "type": "Filtrage",
             "action": f"Ignoré {len(id_like)} colonne(s) identifiant",
             "reason": f"Colonnes identifiées comme ID : {', '.join(id_like)}",
-            "justification": "Les identifiants ne nécessitent pas de prétraitement statistique."
+            "justification": "Colonnes détectées comme identifiants uniques ou séquentiels."
         })
 
     # --- 1️⃣ Valeurs manquantes ---
@@ -78,11 +101,19 @@ def analyze_dataset(df: pd.DataFrame):
 
     # --- 3️⃣ Variables catégorielles ---
     cat_df = df.select_dtypes(include=["object", "category"])
+    # Filtrage intelligent : garder seulement colonnes valides
+    cat_cols = cat_df.columns[
+        (~cat_df.apply(pd.api.types.is_numeric_dtype)) &       # exclure numériques
+        (~cat_df.apply(pd.api.types.is_datetime64_any_dtype)) & # exclure dates
+        (cat_df.nunique() <= 15)                               # nombre raisonnable de catégories
+    ].tolist()
+    cat_df = cat_df[cat_cols]
+
     if not cat_df.empty:
         summary["categorical_cols"] = cat_df.columns.tolist()
         suggestions.append({
             "type": "Encodage catégoriel",
-            "action": "OneHotEncoder ou LabelEncoder",
+            "action": "LabelEncoder",
             "reason": f"{len(cat_df.columns)} colonnes catégorielles détectées",
             "justification": "Les modèles statistiques nécessitent des données numériques."
         })

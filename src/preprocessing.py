@@ -3,6 +3,7 @@ import pandas as pd
 import numpy as np
 from sklearn.preprocessing import StandardScaler, MinMaxScaler
 from sklearn.feature_selection import VarianceThreshold
+from sklearn.preprocessing import LabelEncoder
 
 
 def handle_missing_data(df: pd.DataFrame) -> pd.DataFrame:
@@ -85,4 +86,72 @@ def variance_threshold_filter(df: pd.DataFrame, threshold: float = 0.01) -> pd.D
     kept_features = [col for col, keep in zip(numeric_cols, selector.get_support()) if keep]
     df = df[kept_features + [col for col in df.columns if col not in numeric_cols]]
 
+    return df
+# =========================================
+def encode_categorical(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Encode les colonnes catégorielles (object / category) en One-Hot,
+    en excluant les colonnes numériques, les dates et celles avec trop de catégories (>15).
+    """
+    df = df.copy()
+    
+    # Sélection des colonnes catégorielles
+    cat_cols = df.select_dtypes(include=['object', 'category']).columns
+
+    # Filtrage intelligent des colonnes à encoder
+    filtered_cols = [
+        col for col in cat_cols
+        if not pd.api.types.is_numeric_dtype(df[col])         # exclure numériques
+        and not pd.api.types.is_datetime64_any_dtype(df[col]) # exclure dates
+        and df[col].nunique() <= 10                           # nombre raisonnable de catégories
+    ]
+    
+    # Appliquer One-Hot Encoding sur les colonnes filtrées
+    if filtered_cols:
+        df = pd.get_dummies(df, columns=filtered_cols, drop_first=True)
+    
+    return df
+
+
+# =========================================
+def label_encode_categorical(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Encode toutes les colonnes catégorielles (object / category) en entiers,
+    en excluant les colonnes numériques, les dates et celles avec trop de catégories (>15).
+    """
+    df = df.copy()
+    
+    # Sélection des colonnes catégorielles
+    cat_cols = df.select_dtypes(include=['object', 'category']).columns
+
+    # Filtrage intelligent des colonnes à encoder
+    filtered_cols = [
+        col for col in cat_cols
+        if not pd.api.types.is_numeric_dtype(df[col])      # exclure numériques
+        and not pd.api.types.is_datetime64_any_dtype(df[col])  # exclure dates
+        and df[col].nunique() <= 10                        # nombre raisonnable de catégories
+    ]
+    
+    # Appliquer Label Encoding sur les colonnes filtrées
+    if filtered_cols:
+        le = LabelEncoder()
+        for col in filtered_cols:
+            df[col] = le.fit_transform(df[col])
+    
+    return df
+
+# =========================================
+# 4️⃣ Traitement des outliers (IQR / Winsorization)
+# =========================================
+def handle_outliers(df: pd.DataFrame) -> pd.DataFrame:
+    df = df.copy()
+    numeric_cols = df.select_dtypes(include=['float64', 'int64']).columns
+    for col in numeric_cols:
+        Q1 = df[col].quantile(0.25)
+        Q3 = df[col].quantile(0.75)
+        IQR = Q3 - Q1
+        lower = Q1 - 1.5 * IQR
+        upper = Q3 + 1.5 * IQR
+        df[col] = np.where(df[col] < lower, lower, df[col])
+        df[col] = np.where(df[col] > upper, upper, df[col])
     return df
